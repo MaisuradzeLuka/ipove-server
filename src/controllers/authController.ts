@@ -2,17 +2,41 @@ import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import db from "../db/index.js";
 import { users } from "../db/schemas/schema.js";
-import { hashPassword, signUserToken } from "../lib/authCrypto.js";
+import {
+  hashPassword,
+  signUserToken,
+  verifyPassword,
+} from "../lib/authCrypto.js";
+import type { SignUpBody } from "../types/auth.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const signUp = async (req: Request, res: Response) => {
-  const body = req.body as { email?: unknown; password?: unknown };
-  const emailRaw =
-    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const password = typeof body.password === "string" ? body.password : "";
+function parseCredentials(body: unknown): { email: string; password: string } {
+  const b = body as Partial<SignUpBody>;
+  const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
+  const password = typeof b.password === "string" ? b.password : "";
+  return { email, password };
+}
 
-  if (!emailRaw || !EMAIL_RE.test(emailRaw)) {
+function issueUserJwt(
+  userId: number | string | bigint,
+  email: string,
+  context: string,
+):
+  | { ok: true; token: string }
+  | { ok: false; error: string } {
+  try {
+    return { ok: true, token: signUserToken(userId, email) };
+  } catch (err: any) {
+    console.error(`${context} JWT error:`, err);
+    return { ok: false, error: err.message };
+  }
+}
+
+export const signUp = async (req: Request, res: Response): Promise<void> => {
+  const { email, password } = parseCredentials(req.body);
+
+  if (!email || !EMAIL_RE.test(email)) {
     res.status(400).json({ error: "Valid email is required" });
     return;
   }
@@ -24,7 +48,7 @@ export const signUp = async (req: Request, res: Response) => {
   const [existing] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, emailRaw))
+    .where(eq(users.email, email))
     .limit(1);
 
   if (existing) {
@@ -36,7 +60,7 @@ export const signUp = async (req: Request, res: Response) => {
 
   const [created] = await db
     .insert(users)
-    .values({ email: emailRaw, passwordHash })
+    .values({ email, passwordHash })
     .returning({ id: users.id, email: users.email });
 
   if (!created) {
@@ -44,23 +68,59 @@ export const signUp = async (req: Request, res: Response) => {
     return;
   }
 
-  console.log(created);
-
-  let token: string;
-  try {
-    token = signUserToken(created.id, created.email);
-  } catch (err) {
-    console.error("signUp JWT error:", err);
-    const message =
-      err instanceof Error && err.message === "JWT_SECRET is not set"
-        ? "JWT_SECRET is not set in environment"
-        : "Could not issue token";
-    res.status(500).json({ error: message });
+  const issued = issueUserJwt(created.id, created.email, "signUp");
+  if (!issued.ok) {
+    res.status(500).json({ error: issued.error });
     return;
   }
 
-  return res.status(201).json({
+  res.status(201).json({
     user: { id: created.id, email: created.email },
-    token,
+    token: issued.token,
+  });
+};
+
+export const signIn = async (req: Request, res: Response): Promise<void> => {
+  const { email, password } = parseCredentials(req.body);
+
+  if (!email || !EMAIL_RE.test(email)) {
+    res.status(400).json({ error: "Valid email is required" });
+    return;
+  }
+  if (!password) {
+    res.status(400).json({ error: "Password is required" });
+    return;
+  }
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      passwordHash: users.passwordHash,
+    })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (!user) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  const valid = await verifyPassword(password, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  const issued = issueUserJwt(user.id, user.email, "signIn");
+  if (!issued.ok) {
+    res.status(500).json({ error: issued.error });
+    return;
+  }
+
+  res.status(200).json({
+    user: { id: user.id, email: user.email },
+    token: issued.token,
   });
 };
