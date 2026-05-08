@@ -8,6 +8,7 @@ import {
   verifyPassword,
 } from "../lib/authCrypto.js";
 import type { SignUpBody } from "../types/auth.js";
+import { uploadSingleImageFile } from "../lib/imageUpload.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,9 +23,7 @@ function issueUserJwt(
   userId: number | string | bigint,
   email: string,
   context: string,
-):
-  | { ok: true; token: string }
-  | { ok: false; error: string } {
+): { ok: true; token: string } | { ok: false; error: string } {
   try {
     return { ok: true, token: signUserToken(userId, email) };
   } catch (err: any) {
