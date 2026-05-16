@@ -7,7 +7,7 @@ import {
   signUserToken,
   verifyPassword,
 } from "../lib/authCrypto.js";
-import type { SignUpBody } from "../types/auth.js";
+import type { SignUpBody, UpdateUser } from "../types/auth.js";
 import { uploadSingleImageFile } from "../lib/imageUpload.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,7 +45,7 @@ export const signUp = async (req: Request, res: Response): Promise<void> => {
   }
 
   const [existing] = await db
-    .select({ id: users.id })
+    .select({ userId: users.userId })
     .from(users)
     .where(eq(users.email, email))
     .limit(1);
@@ -57,24 +57,31 @@ export const signUp = async (req: Request, res: Response): Promise<void> => {
 
   const passwordHash = await hashPassword(password);
 
+  const fullUser = {
+    email,
+    passwordHash,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   const [created] = await db
     .insert(users)
-    .values({ email, passwordHash })
-    .returning({ id: users.id, email: users.email });
+    .values(fullUser)
+    .returning({ userId: users.userId, email: users.email });
 
   if (!created) {
     res.status(500).json({ error: "Could not create user" });
     return;
   }
 
-  const issued = issueUserJwt(created.id, created.email, "signUp");
+  const issued = issueUserJwt(created.userId, created.email, "signUp");
   if (!issued.ok) {
     res.status(500).json({ error: issued.error });
     return;
   }
 
   res.status(201).json({
-    user: { id: created.id, email: created.email },
+    user: { userId: created.userId, email: created.email },
     token: issued.token,
   });
 };
@@ -93,7 +100,7 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
 
   const [user] = await db
     .select({
-      id: users.id,
+      userId: users.userId,
       email: users.email,
       passwordHash: users.passwordHash,
     })
@@ -112,14 +119,41 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const issued = issueUserJwt(user.id, user.email, "signIn");
+  const issued = issueUserJwt(user.userId, user.email, "signIn");
   if (!issued.ok) {
     res.status(500).json({ error: issued.error });
     return;
   }
 
   res.status(200).json({
-    user: { id: user.id, email: user.email },
+    user: { userId: user.userId, email: user.email },
     token: issued.token,
   });
+};
+
+export const updateUser = async (
+  req: Request<{}, {}, UpdateUser>,
+  res: Response,
+): Promise<void> => {
+  const values = req.body;
+
+  try {
+    const updatedUser = await db
+      .update(users)
+      .set(values)
+      .where(eq(users.userId, values.userId))
+      .returning();
+
+    if (!updatedUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    res.status(200).json({ message: "User updated successfully" });
+    return;
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ error: "Internal server error" });
+    return;
+  }
 };

@@ -9,6 +9,7 @@ if (!url) {
 }
 
 const sql = neon(url);
-const db = drizzle({ client: sql, schema });
+
+const db = drizzle(sql, { schema });
 
 export default db;

@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
-import { signIn, signUp } from "../controllers/authController.js";
+import { signIn, signUp, updateUser } from "../controllers/authController.js";
+import { validateUpdateUser } from "../middleware/validateUpdateUser.js";
 
 const router = express.Router();
 const upload = multer({
@@ -10,5 +11,6 @@ const upload = multer({
 
 router.post("/sign-up", signUp);
 router.post("/sign-in", signIn);
+router.put("/update-user", validateUpdateUser, updateUser);
 
 export default router;
