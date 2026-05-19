@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import db from "../db/index.js";
 import { users } from "../db/schemas/schema.js";
+import { setAuthCookie, clearAuthCookie } from "../lib/authCookie.js";
 import {
   hashPassword,
   signUserToken,
@@ -80,9 +81,10 @@ export const signUp = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  setAuthCookie(res, issued.token);
+
   res.status(201).json({
     user: { userId: created.userId, email: created.email },
-    token: issued.token,
   });
 };
 
@@ -125,10 +127,16 @@ export const signIn = async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  setAuthCookie(res, issued.token);
+
   res.status(200).json({
     user: { userId: user.userId, email: user.email },
-    token: issued.token,
   });
+};
+
+export const signOut = async (_req: Request, res: Response): Promise<void> => {
+  clearAuthCookie(res);
+  res.status(200).json({ message: "Signed out" });
 };
 
 export const updateUser = async (

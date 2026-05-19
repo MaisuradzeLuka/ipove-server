@@ -1,5 +1,6 @@
 import express from "express";
 import { uploadImage } from "../controllers/uploadImageController.js";
+import { authenticateJwt } from "../middleware/authenticateJwt.js";
 import multer from "multer";
 
 const upload = multer({
@@ -9,6 +10,6 @@ const upload = multer({
 
 const router = express.Router();
 
-router.post("/", upload.single("image"), uploadImage);
+router.post("/", authenticateJwt, upload.single("image"), uploadImage);
 
 export default router;
