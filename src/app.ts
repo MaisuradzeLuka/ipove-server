@@ -1,6 +1,7 @@
 import "./loadEnv.js";
 import express from "express";
 import authRoutes from "./routes/auth.js";
+import imageRouter from "./routes/images.js";
 import cors from "cors";
 import { isCloudinaryConfigured } from "./lib/cloudinary.js";
 
@@ -30,6 +31,7 @@ app.use(
 app.use(express.json());
 
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/upload-image", imageRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
